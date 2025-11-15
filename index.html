@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>美食推薦器</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<style>
+  body {
+    font-family: "Noto Sans TC", sans-serif;
+    background: #fff8f0;
+    color: #4a3b2c;
+    margin: 0;
+    padding: 0;
+  }
+
+  .hero {
+    background-image: url("https://img.freepik.com/premium-vector/food-pattern-seamless_534604-531.jpg");
+    background-size: cover;
+    background-position: center;
+    color: #fff8f0;
+    text-align: center;
+    padding: 4rem 1rem;
+    position: relative;
+  }
+
+  .hero::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(245, 139, 84, 0.3);
+    z-index: 0;
+  }
+
+  .hero h1 {
+    position: relative;
+    z-index: 1;
+    font-size: 2.8rem;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+    color: #fff8f0;
+    margin: 0;
+    text-shadow: 1px 1px 4px rgba(0,0,0,0.1);
+  }
+
+  /* ===== 登入區 ===== */
+  #loginArea {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+    background: #f4c095;
+    padding: 5px 10px;
+    border-radius: 8px;
+    border: 1px solid #f58b54;
+    font-family: 'Noto Sans TC', sans-serif;
+  }
+  #loginBtn {
+    margin-left: 10px;
+    padding: 2px 6px;
+    background: #f58b54;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  /* ===== 留言區 ===== */
+  section {
+    padding: 2rem;
+    max-width: 700px;
+    margin: 2rem auto;
+    background: #fff0e6;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(245, 139, 84, 0.15);
+    border: 1px solid #f4c095;
+  }
+
+  h2 {
+    text-align: center;
+    color: #f58b54;
+    border-bottom: 2px solid #f58b54;
+    padding-bottom: 0.5rem;
+  }
+
+  #searchArea input {
+    padding: 5px;
+    width: 250px;
+    margin-right: 10px;
+  }
+
+  #reviewArea {
+    margin-top: 20px;
+  }
+
+  .rating-group {
+    margin-bottom: 10px;
+  }
+
+  .rating-row {
+    margin-bottom: 5px;
+  }
+
+  .stars span {
+    font-size: 24px;
+    cursor: pointer;
+    color: lightgray;
+    transition: color 0.2s;
+  }
+
+  .stars span:hover,
+  .stars span:hover ~ span {
+    color: gold;
+  }
+
+  textarea {
+    width: 100%;
+    height: 80px;
+    margin-top: 10px;
+    border-radius: 8px;
+    border: 1px solid #f4c095;
+    padding: 8px;
+    font-size: 1rem;
+    background: #fff8f0;
+    color: #4a3b2c;
+  }
+
+  button {
+    background-color: #f58b54;
+    color: white;
+    border: none;
+    cursor: pointer;
+    margin-top: 10px;
+    font-weight: 700;
+    transition: 0.3s;
+    border-radius: 8px;
+    padding: 8px 16px;
+  }
+
+  button:hover {
+    background-color: #f79465;
+  }
+
+  #reviewsUl li {
+    margin-bottom: 10px;
+  }
+
+  #reviewsUl button {
+    margin-left: 10px;
+    cursor: pointer;
+  }
+</style>
+</head>
+
+<body>
+<!-- 登入區 -->
+<div id="loginArea">
+  <span id="welcomeText">未登入</span>
+  <button id="loginBtn">登入</button>
+</div>
+
+<!-- 標題 -->
+<div class="hero"><h1>美食推薦器</h1></div>
+
+<!-- 留言區 -->
+<section id="content">
+  <h2>網友留言區</h2>
+
+  <!-- 🔍 搜尋餐廳 -->
+  <div id="searchArea">
+    <input type="text" id="searchRestaurant" placeholder="輸入餐廳名稱，例如：阿宗麵線">
+    <button id="searchBtn">搜尋評論</button>
+  </div>
+
+  <!-- ✏️ 留言輸入區 -->
+  <div id="reviewArea" style="display:none;">
+    <h3 id="currentRestaurant" style="text-align:center; color:#ff8c42;"></h3>
+
+    <div class="rating-group">
+      <div class="rating-row"><span>口味：</span><div class="stars" data-category="taste">★★★★★</div></div>
+      <div class="rating-row"><span>服務：</span><div class="stars" data-category="service">★★★★★</div></div>
+      <div class="rating-row"><span>環境：</span><div class="stars" data-category="environment">★★★★★</div></div>
+      <div class="rating-row"><span>價位：</span><div class="stars" data-category="price">★★★★★</div></div>
+    </div>
+
+    <textarea id="commentInput" placeholder="輸入您的用餐心得..."></textarea>
+    <button id="submitReview">送出評論</button>
+
+    <div id="reviewList">
+      <h3>🍊 網友留言</h3>
+      <ul id="reviewsUl"></ul>
+    </div>
+  </div>
+</section>
+
+<script>
+let registeredUsers = JSON.parse(localStorage.getItem("registeredUsers")) || [];
+// ===== 登入功能 =====
+let currentUser = null;
+let loggedIn = false;
+const loginBtn = document.getElementById('loginBtn');
+const welcomeText = document.getElementById('welcomeText');
+
+loginBtn.onclick = () => {
+  if (!loggedIn) {
+    const name = prompt("請輸入使用者名稱：");
+    if (!name) return;
+
+    // 檢查是否重複
+    if (registeredUsers.includes(name)) {
+      alert("此名稱已被使用，請換一個！");
+      return;
+    }
+
+    // 註冊新使用者
+    registeredUsers.push(name);
+    localStorage.setItem("registeredUsers", JSON.stringify(registeredUsers));
+
+    // 設定登入
+    loggedIn = true;
+    currentUser = name;
+    welcomeText.textContent = `您好, ${name}`;
+    loginBtn.textContent = "登出";
+
+  } else {
+    loggedIn = false;
+    welcomeText.textContent = "未登入";
+    loginBtn.textContent = "登入";
+    
+    alert("已登出");
+    currentUser = null;
+  }
+};
+
+
+// ===== 搜尋餐廳與留言功能 =====
+const searchBtn = document.getElementById("searchBtn");
+const reviewArea = document.getElementById("reviewArea");
+const currentRestaurant = document.getElementById("currentRestaurant");
+const reviewsUl = document.getElementById("reviewsUl");
+
+searchBtn.onclick = () => {
+  const restaurantName = document.getElementById("searchRestaurant").value.trim();
+  if (!restaurantName) return alert("請輸入餐廳名稱");
+
+  currentRestaurant.innerText = restaurantName;
+  reviewArea.style.display = "block";
+
+  const reviews = JSON.parse(localStorage.getItem(restaurantName)) || [];
+  renderReviews(reviews, restaurantName);
+
+  document.querySelectorAll(".stars").forEach(starDiv => {
+    starDiv.innerHTML = "★★★★★".split("").map((_, i) => `<span data-index="${i}">★</span>`).join("");
+  });
+  document.getElementById("commentInput").value = "";
+  initStarClicks();
+};
+
+function initStarClicks() {
+  document.querySelectorAll(".stars").forEach(starDiv => {
+    const spans = starDiv.querySelectorAll("span");
+    spans.forEach(s => s.style.color = "lightgray");
+    spans.forEach(span => {
+      span.onclick = () => {
+        const index = parseInt(span.dataset.index);
+        spans.forEach((s, i) => {
+          s.style.color = i <= index ? "gold" : "lightgray";
+        });
+      };
+    });
+  });
+}
+
+function renderReviews(reviews, restaurantName) {
+  reviewsUl.innerHTML = "";
+
+  if (reviews.length === 0) {
+    const li = document.createElement("li");
+    li.innerText = "目前尚無留言";
+    reviewsUl.appendChild(li);
+    return;
+  }
+
+  reviews.forEach((r, index) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<strong>${r.username}</strong> 
+      (口味:${r.rating.taste}⭐ / 服務:${r.rating.service}⭐ / 環境:${r.rating.environment}⭐ / 價位:${r.rating.price}⭐):
+      ${r.comment}`;
+    const currentName = loggedIn ? currentUser : "訪客";
+    if (r.username === currentName) {
+      const btn = document.createElement("button");
+      btn.innerText = "刪除";
+      btn.onclick = () => {
+        reviews.splice(index, 1);
+        localStorage.setItem(restaurantName, JSON.stringify(reviews));
+        renderReviews(reviews, restaurantName);
+      };
+      li.appendChild(btn);
+    }
+    reviewsUl.appendChild(li);
+  });
+}
+
+const submitReview = document.getElementById("submitReview");
+submitReview.onclick = () => {
+  const restaurantName = currentRestaurant.innerText;
+  const comment = document.getElementById("commentInput").value.trim();
+  if (!comment) return alert("請輸入留言內容");
+
+  const rating = {};
+  document.querySelectorAll(".stars").forEach(starDiv => {
+    const spans = starDiv.querySelectorAll("span");
+    rating[starDiv.dataset.category] = Array.from(spans).filter(s => s.style.color === "gold").length;
+  });
+
+  const reviews = JSON.parse(localStorage.getItem(restaurantName)) || [];
+  const currentName = loggedIn ? currentUser : "訪客";
+
+  reviews.push({ username: currentName, comment, rating });
+  localStorage.setItem(restaurantName, JSON.stringify(reviews));
+
+  renderReviews(reviews, restaurantName);
+  document.getElementById("commentInput").value = "";
+  document.querySelectorAll(".stars span").forEach(s => s.style.color = "lightgray");
+};
+</script>
+</body>
+</html>
